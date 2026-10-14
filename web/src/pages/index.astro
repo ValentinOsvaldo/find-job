@@ -1,0 +1,152 @@
+---
+import '../styles/global.css';
+---
+
+<html lang="es">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+		<title>Vacantes Monterrey</title>
+	</head>
+	<body class="min-h-screen bg-stone-50 font-sans text-stone-800 antialiased dark:bg-stone-950 dark:text-stone-100">
+		<header class="bg-gradient-to-br from-orange-500 via-rose-500 to-fuchsia-600 text-white">
+			<div class="mx-auto max-w-3xl px-4 pt-10 pb-20">
+				<p class="text-sm font-semibold tracking-wide text-white/80 uppercase">Monterrey, N.L.</p>
+				<h1 class="mt-1 text-3xl font-extrabold sm:text-4xl">Vacantes de auxiliar administrativa y capturista</h1>
+				<p id="meta" class="mt-3 text-white/85">Cargando…</p>
+			</div>
+		</header>
+
+		<main class="mx-auto -mt-12 max-w-3xl px-4 pb-16">
+			<div class="rounded-2xl bg-white p-4 shadow-lg ring-1 ring-stone-200 dark:bg-stone-900 dark:ring-stone-800">
+				<input
+					id="q"
+					type="search"
+					placeholder="Buscar por puesto, empresa o colonia…"
+					class="w-full rounded-xl border-0 bg-stone-100 px-4 py-3 text-base outline-none ring-orange-400 placeholder:text-stone-400 focus:ring-2 dark:bg-stone-800"
+				/>
+				<div class="mt-3 flex flex-wrap items-center gap-2">
+					<label class="flex cursor-pointer items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-sm font-medium has-checked:bg-orange-100 has-checked:text-orange-700 dark:bg-stone-800 dark:has-checked:bg-orange-500/20 dark:has-checked:text-orange-300">
+						<input id="onlyNew" type="checkbox" class="accent-orange-500" /> Solo nuevas (24 h)
+					</label>
+					<label class="flex cursor-pointer items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-sm font-medium has-checked:bg-orange-100 has-checked:text-orange-700 dark:bg-stone-800 dark:has-checked:bg-orange-500/20 dark:has-checked:text-orange-300">
+						<input id="withPay" type="checkbox" class="accent-orange-500" /> Con sueldo
+					</label>
+					<button
+						id="excel"
+						class="ml-auto inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 active:scale-95"
+					>
+						<svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a1 1 0 0 1 1 1v7.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42L9 11.6V4a1 1 0 0 1 1-1ZM4 15a1 1 0 0 1 1 1h10a1 1 0 1 1 0 2H5a2 2 0 0 1-2-2 1 1 0 0 1 1-1Z" /></svg>
+						Descargar Excel
+					</button>
+				</div>
+			</div>
+
+			<p id="count" class="mt-6 mb-3 text-sm font-medium text-stone-500"></p>
+			<div id="list" class="space-y-3"></div>
+		</main>
+
+		<script>
+			type Job = {
+				title: string; company?: string; location?: string; job_url: string; site: string;
+				description?: string; date_posted?: string; min_amount?: number; max_amount?: number;
+				interval?: string; first_seen: string; _text: string;
+			};
+
+			const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+			const DAY = 864e5;
+			const PER: Record<string, string> = { yearly: 'año', monthly: 'mes', weekly: 'semana', daily: 'día', hourly: 'hora' };
+			const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+			const esc = (s = '') => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+			const isNew = (j: Job) => Date.now() - +new Date(j.first_seen) < DAY;
+			const money = (n: number) => n.toLocaleString('es-MX', { maximumFractionDigits: 0 });
+
+			let jobs: Job[] = [];
+			let shown: Job[] = [];
+
+			function salary(j: Job) {
+				const range = [j.min_amount, j.max_amount].filter(Boolean).map((n) => money(n!)).join(' – ');
+				return range ? `$${range}${j.interval && PER[j.interval] ? ` / ${PER[j.interval]}` : ''}` : '';
+			}
+
+			function ago(d?: string) {
+				if (!d) return '';
+				const days = Math.floor((Date.now() - +new Date(d + 'T12:00')) / DAY);
+				return days <= 0 ? 'Hoy' : days === 1 ? 'Ayer' : `Hace ${days} días`;
+			}
+
+			const chip = (text: string, cls = 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300') =>
+				text ? `<span class="rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}">${esc(text)}</span>` : '';
+
+			function card(j: Job) {
+				const pay = salary(j);
+				return `
+				<article class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-200 transition hover:shadow-md dark:bg-stone-900 dark:ring-stone-800">
+					<div class="flex flex-wrap gap-1.5">
+						${isNew(j) ? chip('Nueva', 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300') : ''}
+						${chip(pay, 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300')}
+						${chip(ago(j.date_posted))}
+						${chip(j.site === 'indeed' ? 'Indeed' : 'LinkedIn')}
+					</div>
+					<h2 class="mt-2.5 text-lg leading-snug font-bold">
+						<a href="${esc(j.job_url)}" target="_blank" rel="noopener" class="hover:text-orange-600">${esc(j.title)}</a>
+					</h2>
+					<p class="mt-0.5 text-sm text-stone-500 dark:text-stone-400">${esc([j.company, j.location].filter(Boolean).join(' · '))}</p>
+					${j.description ? `
+					<details class="group mt-3">
+						<summary class="cursor-pointer list-none text-sm font-semibold text-orange-600 dark:text-orange-400">
+							<span class="group-open:hidden">Ver descripción ↓</span><span class="hidden group-open:inline">Ocultar ↑</span>
+						</summary>
+						<div class="mt-2 max-h-96 overflow-auto rounded-xl bg-stone-50 p-4 text-sm leading-relaxed whitespace-pre-line text-stone-600 dark:bg-stone-800/60 dark:text-stone-300">${esc(j.description.replace(/[*\\#]/g, ''))}</div>
+					</details>` : ''}
+					<a href="${esc(j.job_url)}" target="_blank" rel="noopener"
+						class="mt-4 inline-flex rounded-full bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 dark:bg-white dark:text-stone-900 dark:hover:bg-orange-400">
+						Ver vacante y postularme →
+					</a>
+				</article>`;
+			}
+
+			function render() {
+				const q = fold($<HTMLInputElement>('q').value);
+				const onlyNew = $<HTMLInputElement>('onlyNew').checked;
+				const withPay = $<HTMLInputElement>('withPay').checked;
+				shown = jobs.filter((j) => (!onlyNew || isNew(j)) && (!withPay || salary(j)) && (!q || j._text.includes(q)));
+				$('count').textContent = `${shown.length} vacantes`;
+				$('list').innerHTML = shown.length
+					? shown.map(card).join('')
+					: '<p class="rounded-2xl bg-white p-8 text-center text-stone-500 ring-1 ring-stone-200 dark:bg-stone-900 dark:ring-stone-800">No hay vacantes con esos filtros.</p>';
+			}
+
+			const getJson = (url: string, fallback: unknown) => fetch(url).then((r) => (r.ok ? r.json() : fallback)).catch(() => fallback);
+
+			Promise.all([getJson('data/jobs.json', []), getJson('data/meta.json', {})]).then(([data, meta]) => {
+				jobs = data.map((j: Job) => ({ ...j, _text: fold([j.title, j.company, j.location, j.description].join(' ')) }));
+				const fresh = jobs.filter(isNew).length;
+				$('meta').textContent = meta.updated
+					? `${jobs.length} vacantes · ${fresh} nuevas hoy · actualizado ${new Date(meta.updated).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}`
+					: 'Primera búsqueda en curso, recarga en unos minutos.';
+				render();
+			});
+
+			for (const id of ['q', 'onlyNew', 'withPay']) $(id).addEventListener('input', render);
+
+			// Exporta lo que está filtrado en pantalla.
+			$('excel').addEventListener('click', async () => {
+				const XLSX = await import('xlsx');
+				const ws = XLSX.utils.json_to_sheet(
+					shown.map((j) => ({
+						Puesto: j.title, Empresa: j.company, Ubicación: j.location, Sueldo: salary(j),
+						Publicada: j.date_posted, Fuente: j.site, Link: j.job_url,
+					})),
+				);
+				ws['!cols'] = [40, 30, 30, 22, 12, 10, 60].map((wch) => ({ wch }));
+				const wb = XLSX.utils.book_new();
+				XLSX.utils.book_append_sheet(wb, ws, 'Vacantes');
+				XLSX.writeFile(wb, `vacantes-${new Date().toISOString().slice(0, 10)}.xlsx`);
+			});
+		</script>
+	</body>
+</html>
