@@ -1,4 +1,4 @@
-"""Scrapea vacantes de auxiliar administrativa / capturista en Monterrey y las sirve en una página simple."""
+"""Scrapea vacantes de auxiliar administrativa / capturista en Apodaca (y alrededores) y las sirve en una página simple."""
 
 import json
 import os
@@ -17,7 +17,8 @@ PUBLIC = Path(__file__).parent / "public"
 DATA = PUBLIC / "data" / "jobs.json"
 
 SEARCH_TERMS = [t.strip() for t in os.getenv("SEARCH_TERMS", "auxiliar administrativo,auxiliar administrativa,capturista,asistente administrativa").split(",")]
-LOCATION = os.getenv("LOCATION", "Monterrey, Nuevo León")
+LOCATION = os.getenv("LOCATION", "Apodaca, Nuevo León")
+DISTANCE = int(os.getenv("DISTANCE", "10"))  # millas alrededor de LOCATION
 HOURS_OLD = int(os.getenv("HOURS_OLD", "72"))
 RESULTS = int(os.getenv("RESULTS", "40"))
 EVERY_HOURS = float(os.getenv("EVERY_HOURS", "6"))
@@ -31,6 +32,10 @@ FIELDS = ("title", "company", "location", "job_url", "site", "description", "dat
 def norm(text) -> str:
     text = unicodedata.normalize("NFKD", str(text or "").lower())
     return "".join(c for c in text if not unicodedata.combining(c))
+
+
+def in_apodaca(job) -> bool:
+    return "apodaca" in norm(job.get("location"))
 
 
 def is_relevant(title) -> bool:
@@ -66,6 +71,7 @@ def scrape_once():
                 location=LOCATION,
                 results_wanted=RESULTS,
                 hours_old=HOURS_OLD,
+                distance=DISTANCE,
                 country_indeed="Mexico",
                 fetch_description=True,
             )
@@ -87,7 +93,7 @@ def scrape_once():
     cutoff = (datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)).isoformat()
     kept = sorted(
         (j for j in jobs.values() if j["first_seen"] >= cutoff),
-        key=lambda j: (j.get("date_posted") or j["first_seen"][:10], j["first_seen"]),
+        key=lambda j: (in_apodaca(j), j.get("date_posted") or j["first_seen"][:10], j["first_seen"]),
         reverse=True,
     )
     DATA.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +113,7 @@ def loop():
 if __name__ == "__main__":
     assert is_relevant("Auxiliar Administrativa") and is_relevant("CAPTURISTA de datos") and is_relevant("Asistente Administrativo")
     assert not is_relevant("Vendedor de piso")
+    assert in_apodaca({"location": "Apodaca, N.L."}) and not in_apodaca({"location": None})
     threading.Thread(target=loop, daemon=True).start()
     handler = partial(SimpleHTTPRequestHandler, directory=str(PUBLIC))
     print("Sirviendo en http://localhost:8080", flush=True)

@@ -8,6 +8,7 @@ services:
     environment:
       EVERY_HOURS: ${EVERY_HOURS:-6}
       # SEARCH_TERMS: auxiliar administrativo,capturista
-      # LOCATION: Monterrey, Nuevo León
+      # LOCATION: Apodaca, Nuevo León
+      # DISTANCE: 10
     volumes:
       - ./web/public/data:/app/public/data
